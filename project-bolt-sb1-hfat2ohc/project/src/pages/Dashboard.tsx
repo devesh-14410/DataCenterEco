@@ -486,6 +486,40 @@ const ADMIN_CLIENTS = [
 ];
 
 function AdminMasterPanel() {
+    const [telemetry, setTelemetry] = useState<any>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    const fetchTelemetry = async () => {
+      try {
+        const response = await fetch('/api/telemetry', {
+          cache: 'no-store'
+        });
+
+        if (!response.ok) {
+          throw new Error(`API Error: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (active && data?.node_id && data?.metrics) {
+          setTelemetry(data);
+        }
+      } catch (error) {
+        console.error('EcoVolt telemetry fetch failed:', error);
+      }
+    };
+
+    fetchTelemetry();
+
+    const interval = window.setInterval(fetchTelemetry, 2000);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, []);
   const totalGpus = ADMIN_CLIENTS.reduce((s, c) => s + c.gpus, 0);
   const totalSavings = ADMIN_CLIENTS.reduce((s, c) => s + c.savings, 0);
   const activeSyncs = ADMIN_CLIENTS.filter((c) => c.ai).length;
@@ -503,6 +537,88 @@ function AdminMasterPanel() {
         <span className="inline-flex items-center gap-1.5 rounded-full border border-volt-500/40 bg-volt-500/10 px-3 py-1 text-xs text-volt-400">
           <span className="h-1.5 w-1.5 rounded-full bg-volt-500 animate-blink" /> {activeSyncs} active AI syncs
         </span>
+      </div>
+            {/* Connected HP Omen Hardware Node */}
+      <div className="card-surface rounded-xl p-5">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold text-ink-100">
+            Connected HP Omen Node
+          </h2>
+
+          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+            telemetry ? 'bg-volt-500/15 text-volt-400' : 'bg-amber-500/15 text-amber-400'
+          }`}>
+            {telemetry ? 'LIVE DATA' : 'WAITING FOR DATA'}
+          </span>
+        </div>
+
+        {telemetry?.metrics ? (
+          <>
+            <p className="mt-3 text-sm text-ink-300">
+              {telemetry.node_id}
+            </p>
+
+            <p className="text-xs text-ink-400">
+              {telemetry.hardware_type}
+            </p>
+
+            <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+
+              <div>
+                <p className="text-xs text-ink-400">CPU Utilization</p>
+                <p className="text-2xl font-bold text-volt-400">
+                  {telemetry.metrics.cpu_utilization_percent ?? 'N/A'}%
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-ink-400">RAM Utilization</p>
+                <p className="text-2xl font-bold text-volt-400">
+                  {telemetry.metrics.ram_utilization_percent ?? 'N/A'}%
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-ink-400">GPU Temperature</p>
+                <p className="text-2xl font-bold text-amber-400">
+                  {telemetry.metrics.gpu_temperature_celsius ?? 'N/A'}°C
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-ink-400">GPU Utilization</p>
+                <p className="text-2xl font-bold text-volt-400">
+                  {telemetry.metrics.gpu_utilization_percent ?? 'N/A'}%
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-ink-400">GPU Memory Utilization</p>
+                <p className="text-2xl font-bold text-purple-400">
+                  {telemetry.metrics.vram_utilization_percent ?? 'N/A'}%
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-ink-400">GPU Power Draw</p>
+                <p className="text-2xl font-bold text-green-400">
+                  {telemetry.metrics.gpu_power_draw_watts ?? 'N/A'} W
+                </p>
+              </div>
+
+            </div>
+
+            <p className="mt-5 text-xs text-ink-400">
+              Last Updated: {telemetry.last_updated
+                ? new Date(telemetry.last_updated).toLocaleString()
+                : 'N/A'}
+            </p>
+          </>
+        ) : (
+          <p className="mt-4 text-sm text-ink-400">
+            Waiting for HP Omen telemetry. Start the Python agent to receive hardware data.
+          </p>
+        )}
       </div>
 
       {/* Unified counters */}
