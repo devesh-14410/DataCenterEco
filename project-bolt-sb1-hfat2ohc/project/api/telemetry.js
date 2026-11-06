@@ -6,13 +6,10 @@ let latestTelemetryData = {
 
 export default async function handler(req, res) {
 
-  // GET: Check whether API is online
-  if (req.method === "GET") {
-    return res.status(200).json({
-      status: "EcoVolt Telemetry API Online",
-      last_updated: latestTelemetryData.last_updated
-    });
-  }
+ // GET: Return latest available hardware telemetry
+if (req.method === "GET") {
+  return res.status(200).json(latestTelemetryData);
+}
 
   // Only POST requests can send telemetry
   if (req.method !== "POST") {
