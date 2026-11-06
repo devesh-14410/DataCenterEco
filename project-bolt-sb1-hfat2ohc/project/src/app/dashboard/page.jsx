@@ -8,14 +8,21 @@ export default function EcoVoltLiveDashboard() {
   useEffect(() => {
     const fetchLiveMetrics = async () => {
       try {
-        // Direct absolute injection channel from httpbin pipeline
-        const res = await fetch('https://httpbin.org', { cache: 'no-store' });
-        const data = await res.json();
-        
-        // Checking if data package holds physical node parameters
-        if (data && data.json && data.json.metrics) {
-          setTelemetry(data.json);
-        }
+       // Connect to EcoVolt AI telemetry API
+const res = await fetch('/api/telemetry', {
+  cache: 'no-store'
+});
+
+if (!res.ok) {
+  throw new Error(`Telemetry API Error: ${res.status}`);
+}
+
+const data = await res.json();
+
+if (data && data.node_id && data.metrics) {
+  setTelemetry(data);
+}
+       
       } catch (err) {
         console.log("Ingestion point sync issue...");
       } finally {
