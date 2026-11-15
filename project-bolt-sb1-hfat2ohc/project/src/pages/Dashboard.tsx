@@ -249,7 +249,7 @@ function LiveView(props: {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-bold text-ink-100">Live Infrastructure</h1>
-          <p className="text-sm text-ink-400">Streaming every 5s · cluster us-east-hyperscale-01</p>
+          <p className="text-sm text-ink-400">Streaming every 1s · cluster us-east-hyperscale-01</p>
         </div>
         <AiToggle active={aiActive} onClick={toggleAi} />
       </div>
@@ -300,7 +300,9 @@ function AiToggle({ active, onClick }: { active: boolean; onClick: () => void })
       </div>
       <div className="text-left">
         <p className="text-sm font-semibold text-ink-100">AI Predictive Optimization</p>
-        <p className="text-xs text-ink-400">{active ? 'Active — agent controlling' : 'Inactive — baseline mode'}</p>
+    <p className="text-xs text-ink-400">
+  {active ? 'Demo active — no hardware control' : 'Demo inactive — no hardware control'}
+</p>
       </div>
       <span
         className={`relative ml-2 h-6 w-11 rounded-full transition ${active ? 'bg-volt-500' : 'bg-ink-600'}`}
