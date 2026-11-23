@@ -541,9 +541,14 @@ const telemetryAge = currentTime - lastUpdated;
 // Determine node status
 const nodeStatus = !telemetry
   ? 'OFFLINE'
-  : !Number.isFinite(lastUpdated) || telemetryAge < 0 || telemetryAge > 10000
-    ? 'STALE'
-    : 'LIVE';
+  : !Number.isFinite(lastUpdated) || telemetryAge < 0
+    ? 'OFFLINE'
+    : telemetryAge > 60000
+      ? 'OFFLINE'
+      : telemetryAge > 10000
+        ? 'STALE'
+        : 'LIVE';
+  
   const totalGpus = ADMIN_CLIENTS.reduce((s, c) => s + c.gpus, 0);
   const totalSavings = ADMIN_CLIENTS.reduce((s, c) => s + c.savings, 0);
   const activeSyncs = ADMIN_CLIENTS.filter((c) => c.ai).length;
