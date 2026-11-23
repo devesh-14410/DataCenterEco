@@ -3,7 +3,8 @@ import React, { useState, useEffect } from 'react';
 
 export default function EcoVoltLiveDashboard() {
   const [telemetry, setTelemetry] = useState(null);
-  const [loading, setLoading] = useState(true);
+const [loading, setLoading] = useState(true);
+const [currentTime, setCurrentTime] = useState(Date.now());
 
   useEffect(() => {
     const fetchLiveMetrics = async () => {
@@ -35,7 +36,33 @@ if (data && data.node_id && data.metrics) {
     const clusterInterval = setInterval(fetchLiveMetrics, 2000);
     return () => clearInterval(clusterInterval);
   }, []);
+  // Update current time every second
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 1000);
 
+    return () => clearInterval(timer);
+  }, []);
+
+  // Determine actual node status
+  const lastUpdated = telemetry?.last_updated
+    ? new Date(telemetry.last_updated).getTime()
+    : NaN;
+
+  const telemetryAge = currentTime - lastUpdated;
+
+  const nodeStatus = !telemetry
+    ? 'OFFLINE'
+    : !Number.isFinite(lastUpdated) || telemetryAge < 0 || telemetryAge > 10000
+      ? 'STALE'
+      : 'LIVE';
+
+  const statusColor = {
+    LIVE: '#059669',
+    STALE: '#d97706',
+    OFFLINE: '#dc2626'
+  }[nodeStatus];
   return (
     <div style={{ backgroundColor: '#0a0f1d', color: '#fff', minHeight: '100vh', padding: '40px', fontFamily: 'sans-serif' }}>
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -46,8 +73,8 @@ if (data && data.node_id && data.metrics) {
             <h1 style={{ margin: 0, fontSize: '2.5rem', color: '#00f2fe', textShadow: '0 0 10px rgba(0,242,254,0.5)' }}>EcoVolt AI Enterprise</h1>
             <p style={{ margin: '5px 0 0 0', color: '#94a3b8' }}>Live Server Cluster Management Network</p>
           </div>
-          <div style={{ backgroundColor: telemetry ? '#059669' : '#dc2626', padding: '8px 16px', borderRadius: '20px', fontWeight: 'bold', textTransform: 'uppercase', fontSize: '0.85rem', boxShadow: telemetry ? '0 0 15px rgba(5,150,105,0.4)' : 'none' }}>
-            {telemetry ? '● Cluster Active' : '● System Standby'}
+          <div style={{ backgroundColor: statusColor, padding: '8px 16px', borderRadius: '20px', fontWeight: 'bold', textTransform: 'uppercase', fontSize: '0.85rem', boxShadow: nodeStatus === 'LIVE' ? '0 0 15px rgba(5,150,105,0.4)' : 'none'}}>
+{`● ${nodeStatus}`}
           </div>
         </div>
 
