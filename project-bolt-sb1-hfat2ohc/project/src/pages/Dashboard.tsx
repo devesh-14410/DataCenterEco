@@ -489,7 +489,7 @@ const ADMIN_CLIENTS = [
 
 function AdminMasterPanel() {
     const [telemetry, setTelemetry] = useState<any>(null);
-
+const [currentTime, setCurrentTime] = useState(Date.now());
   useEffect(() => {
     let active = true;
 
@@ -522,6 +522,28 @@ function AdminMasterPanel() {
       window.clearInterval(interval);
     };
   }, []);
+  // Update current time every second
+useEffect(() => {
+  const timer = window.setInterval(() => {
+    setCurrentTime(Date.now());
+  }, 1000);
+
+  return () => window.clearInterval(timer);
+}, []);
+
+// Calculate telemetry freshness
+const lastUpdated = telemetry?.last_updated
+  ? new Date(telemetry.last_updated).getTime()
+  : NaN;
+
+const telemetryAge = currentTime - lastUpdated;
+
+// Determine node status
+const nodeStatus = !telemetry
+  ? 'OFFLINE'
+  : !Number.isFinite(lastUpdated) || telemetryAge < 0 || telemetryAge > 10000
+    ? 'STALE'
+    : 'LIVE';
   const totalGpus = ADMIN_CLIENTS.reduce((s, c) => s + c.gpus, 0);
   const totalSavings = ADMIN_CLIENTS.reduce((s, c) => s + c.savings, 0);
   const activeSyncs = ADMIN_CLIENTS.filter((c) => c.ai).length;
@@ -548,12 +570,20 @@ function AdminMasterPanel() {
           </h2>
 
           <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-            telemetry ? 'bg-volt-500/15 text-volt-400' : 'bg-amber-500/15 text-amber-400'
-          }`}>
-            {telemetry ? 'LIVE DATA' : 'WAITING FOR DATA'}
-          </span>
-        </div>
-
+  nodeStatus === 'LIVE'
+    ? 'bg-volt-500/15 text-volt-400'
+    : nodeStatus === 'STALE'
+      ? 'bg-amber-500/15 text-amber-400'
+      : 'bg-red-500/15 text-red-400'
+}`}>
+  {nodeStatus === 'LIVE'
+    ? '● LIVE'
+    : nodeStatus === 'STALE'
+      ? '● STALE'
+      : '● OFFLINE'}
+</span>
+</div>
+        
         {telemetry?.metrics ? (
           <>
             <p className="mt-3 text-sm text-ink-300">
