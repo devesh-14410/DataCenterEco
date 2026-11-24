@@ -564,10 +564,10 @@ const nodeStatus = !telemetry
           <p className="text-sm text-ink-400">Founder / Super-Admin · all tenant clusters & unified savings</p>
         </div>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-volt-500/40 bg-volt-500/10 px-3 py-1 text-xs text-volt-400">
-          <span className="h-1.5 w-1.5 rounded-full bg-volt-500 animate-blink" /> {activeSyncs} active AI syncs
+          <span className="h-1.5 w-1.5 rounded-full bg-volt-500 animate-blink" />{activeSyncs} demo AI syncs
         </span>
       </div>
-            {/* Connected HP Omen Hardware Node */}
+            {/* Connected Hardware Node */}
       <div className="card-surface rounded-xl p-5">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-ink-100">
@@ -588,6 +588,12 @@ const nodeStatus = !telemetry
       : '● OFFLINE'}
 </span>
 </div>
+              </div>
+
+              <div>
+                <p className="text-xs text-ink-400">GPU Power Draw</p>
+                <p className="text-2xl font-bold text-green-400">
+                  {te
         
         {telemetry?.metrics ? (
           <>
@@ -633,14 +639,8 @@ const nodeStatus = !telemetry
                 <p className="text-xs text-ink-400">GPU Memory Utilization</p>
                 <p className="text-2xl font-bold text-purple-400">
                   {telemetry.metrics.vram_utilization_percent ?? 'N/A'}%
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs text-ink-400">GPU Power Draw</p>
-                <p className="text-2xl font-bold text-green-400">
-                  {telemetry.metrics.gpu_power_draw_watts ?? 'N/A'} W
-                </p>
+               </p>lemetry.metrics.gpu_power_draw_watts ?? 'N/A'} W
+                 </p>
               </div>
 
             </div>
@@ -653,7 +653,7 @@ const nodeStatus = !telemetry
           </>
         ) : (
           <p className="mt-4 text-sm text-ink-400">
-            Waiting for HP Omen telemetry. Start the Python agent to receive hardware data.
+           Waiting for hardware telemetry. Start the EcoVolt Integration Agent to connect your system.
           </p>
         )}
       </div>
@@ -672,7 +672,7 @@ const nodeStatus = !telemetry
           <div className="flex items-center gap-2 text-sm text-ink-200">
             <Users size={15} className="text-volt-500" /> Active Client Data Center Syncs
           </div>
-          <span className="text-xs text-ink-400">live simulated telemetry</span>
+          <span className="text-xs text-ink-400">DEMO DATA — NOT LIVE CUSTOMER TELEMETRY</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
