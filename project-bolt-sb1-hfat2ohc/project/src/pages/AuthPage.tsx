@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Logo } from '@/components/Logo';
 import { useAuth } from '@/lib/auth';
 import type { AuthView, Page } from '@/lib/types';
-import { Mail, Lock, User as UserIcon, Eye, EyeOff, ArrowRight, Check } from 'lucide-react';
+import { Mail, Lock, User as UserIcon, Eye, EyeOff, ArrowRight } from 'lucide-react';
 
 interface AuthPageProps {
   initial: AuthView;
@@ -15,7 +15,6 @@ export function AuthPage({ initial, onNavigate }: AuthPageProps) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [remember, setRemember] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -87,17 +86,7 @@ export function AuthPage({ initial, onNavigate }: AuthPageProps) {
               </Field>
             )}
 
-            {view === 'login' && (
-              <div className="flex items-center justify-between">
-                <button type="button" onClick={() => setRemember((v) => !v)} className="flex items-center gap-2 text-sm text-ink-300">
-                  <span className={`flex h-4 w-4 items-center justify-center rounded border ${remember ? 'border-volt-500 bg-volt-500/20' : 'border-ink-600'}`}>
-                    {remember && <Check size={11} className="text-volt-400" />}
-                  </span>
-                  Remember me
-                </button>
-                <button type="button" onClick={() => { setView('reset'); setError(''); setNotice(''); }} className="text-sm text-ink-300 hover:text-volt-400">Forgot password?</button>
-              </div>
-            )}
+
 
             {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
 
