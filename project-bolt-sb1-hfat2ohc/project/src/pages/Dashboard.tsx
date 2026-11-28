@@ -569,80 +569,49 @@ const nodeStatus = !telemetry
       </div>
             {/* Connected Hardware Node */}
       <div className="card-surface rounded-xl p-5">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-ink-100">
-            Connected HP Omen Node
-          </h2>
-
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-bold text-ink-100">Connected Hardware Node</h2>
           <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-  nodeStatus === 'LIVE'
-    ? 'bg-volt-500/15 text-volt-400'
-    : nodeStatus === 'STALE'
-      ? 'bg-amber-500/15 text-amber-400'
-      : 'bg-red-500/15 text-red-400'
-}`}>
-  {nodeStatus === 'LIVE'
-    ? '● LIVE'
-    : nodeStatus === 'STALE'
-      ? '● STALE'
-      : '● OFFLINE'}
-</span>
-</div>
-              </div>
+            nodeStatus === 'LIVE'
+              ? 'bg-volt-500/15 text-volt-400'
+              : nodeStatus === 'STALE'
+                ? 'bg-amber-500/15 text-amber-400'
+                : 'bg-red-500/15 text-red-400'
+          }`}>
+            {nodeStatus === 'LIVE' ? '● LIVE' : nodeStatus === 'STALE' ? '● STALE' : '● OFFLINE'}
+          </span>
+        </div>
 
-              <div>
-                <p className="text-xs text-ink-400">GPU Power Draw</p>
-                <p className="text-2xl font-bold text-green-400">
-                  {te
-        
         {telemetry?.metrics ? (
           <>
-            <p className="mt-3 text-sm text-ink-300">
-              {telemetry.node_id}
-            </p>
-
-            <p className="text-xs text-ink-400">
-              {telemetry.hardware_type}
-            </p>
+            <p className="mt-3 text-sm text-ink-300">{telemetry.node_id}</p>
+            <p className="text-xs text-ink-400">{telemetry.hardware_type ?? 'Hardware details unavailable'}</p>
 
             <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-
               <div>
                 <p className="text-xs text-ink-400">CPU Utilization</p>
-                <p className="text-2xl font-bold text-volt-400">
-                  {telemetry.metrics.cpu_utilization_percent ?? 'N/A'}%
-                </p>
+                <p className="text-2xl font-bold text-volt-400">{telemetry.metrics.cpu_utilization_percent ?? 'N/A'}%</p>
               </div>
-
               <div>
                 <p className="text-xs text-ink-400">RAM Utilization</p>
-                <p className="text-2xl font-bold text-volt-400">
-                  {telemetry.metrics.ram_utilization_percent ?? 'N/A'}%
-                </p>
+                <p className="text-2xl font-bold text-volt-400">{telemetry.metrics.ram_utilization_percent ?? 'N/A'}%</p>
               </div>
-
               <div>
                 <p className="text-xs text-ink-400">GPU Temperature</p>
-                <p className="text-2xl font-bold text-amber-400">
-                  {telemetry.metrics.gpu_temperature_celsius ?? 'N/A'}°C
-                </p>
+                <p className="text-2xl font-bold text-amber-400">{telemetry.metrics.gpu_temperature_celsius ?? 'N/A'}°C</p>
               </div>
-
               <div>
                 <p className="text-xs text-ink-400">GPU Utilization</p>
-                <p className="text-2xl font-bold text-volt-400">
-                  {telemetry.metrics.gpu_utilization_percent ?? 'N/A'}%
-                </p>
+                <p className="text-2xl font-bold text-volt-400">{telemetry.metrics.gpu_utilization_percent ?? 'N/A'}%</p>
               </div>
-
               <div>
                 <p className="text-xs text-ink-400">GPU Memory Utilization</p>
-                <p className="text-2xl font-bold text-purple-400">
-                  {telemetry.metrics.vram_utilization_percent ?? 'N/A'}%
-               </p>lemetry.metrics.gpu_power_draw_watts ?? 'N/A'} W
-                 </p>
+                <p className="text-2xl font-bold text-purple-400">{telemetry.metrics.vram_utilization_percent ?? 'N/A'}%</p>
               </div>
-
+              <div>
+                <p className="text-xs text-ink-400">GPU Power Draw</p>
+                <p className="text-2xl font-bold text-green-400">{telemetry.metrics.gpu_power_draw_watts ?? 'N/A'} W</p>
+              </div>
             </div>
 
             <p className="mt-5 text-xs text-ink-400">
@@ -653,7 +622,7 @@ const nodeStatus = !telemetry
           </>
         ) : (
           <p className="mt-4 text-sm text-ink-400">
-           Waiting for hardware telemetry. Start the EcoVolt Integration Agent to connect your system.
+            Waiting for hardware telemetry. Start the EcoVolt Integration Agent to connect your system.
           </p>
         )}
       </div>
