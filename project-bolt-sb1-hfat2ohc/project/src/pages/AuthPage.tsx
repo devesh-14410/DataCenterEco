@@ -141,7 +141,7 @@ export function AuthPage({ initial, onNavigate }: AuthPageProps) {
 
             {view !== 'verify' && (
               <Field icon={<Mail size={15} />}>
-                <input type="email" className="input-field pl-9" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required readOnly={view === 'verify'} />
+                <input type="email" className="input-field pl-9" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
               </Field>
             )}
 
