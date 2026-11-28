@@ -12,39 +12,7 @@ import {
 
 const MAX_POINTS = 30;
 
-const PYTHON_SCRIPT = `#!/usr/bin/env python3
-"""EcoVolt AI — signed telemetry client. Stream rack metrics to the agent."""
-import json, time, socket, hmac, hashlib, random
 
-ECOVOLT_ENDPOINT = "agent.ecovolt.ai"
-ECOVOLT_PORT = 443
-SECRET = "your-ed25519-shared-secret"
-
-def sign(payload: str) -> str:
-    return hmac.new(SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
-
-def read_sensors():
-    return {
-        "status": "success",
-        "gpu_temp": round(random.uniform(58, 72), 2),
-        "power_usage": round(random.uniform(330, 460), 2),
-        "fan_speed": round(random.uniform(3000, 5200), 1),
-    }
-
-def main():
-    while True:
-        packet = read_sensors()
-        body = json.dumps(packet)
-        signature = sign(body)
-        print(f"[ecovolt] tx -> {body}  sig={signature[:16]}...")
-        # sock = socket.create_connection((ECOVOLT_ENDPOINT, ECOVOLT_PORT))
-        # sock.sendall(body.encode())
-        # sock.close()
-        time.sleep(5)
-
-if __name__ == "__main__":
-    main()
-`;
 
 export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
   const { session, isTrialExpired, role } = useAuth();
@@ -69,6 +37,10 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
   const [logs, setLogs] = useState<LogPacket[]>([]);
   const [savings, setSavings] = useState(0);
   const [copyState, setCopyState] = useState(false);
+  const [agentNodeId, setAgentNodeId] = useState('ecovolt-node-01');
+  const [agentToken, setAgentToken] = useState('');
+  const [tokenLoading, setTokenLoading] = useState(false);
+  const [tokenError, setTokenError] = useState('');
 
   const tick = useRef(0);
   const savingsRef = useRef(0);
@@ -117,11 +89,44 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
     setSavings(0);
   }
 
-  function copyScript() {
-    navigator.clipboard?.writeText(PYTHON_SCRIPT).then(() => {
+  async function copyScript() {
+    try {
+      const response = await fetch('/ecovolt_agent.py', { cache: 'no-store' });
+      if (!response.ok) throw new Error('Unable to load the Python agent file.');
+      const script = await response.text();
+      await navigator.clipboard.writeText(script);
       setCopyState(true);
-      setTimeout(() => setCopyState(false), 1600);
-    });
+      window.setTimeout(() => setCopyState(false), 1600);
+    } catch (error) {
+      setTokenError(error instanceof Error ? error.message : 'Unable to copy agent script.');
+    }
+  }
+
+  async function generateAgentToken() {
+    setTokenLoading(true);
+    setTokenError('');
+    setAgentToken('');
+    try {
+      const { data: authData } = await supabase.auth.getSession();
+      const accessToken = authData.session?.access_token;
+      if (!accessToken) throw new Error('Please sign in again before generating an agent token.');
+
+      const response = await fetch('/api/agent-credentials', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ node_id: agentNodeId.trim() }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to generate agent token.');
+      setAgentToken(result.agent_token);
+    } catch (error) {
+      setTokenError(error instanceof Error ? error.message : 'Unable to generate agent token.');
+    } finally {
+      setTokenLoading(false);
+    }
   }
 
   return (
@@ -202,7 +207,17 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
           />
         )}
         {!isAdmin && view === 'analytics' && <AnalyticsView savings={savings} aiActive={aiActive} powerHist={powerHist} tempHist={tempHist} />}
-        {!isAdmin && view === 'api' && <ApiView copyScript={copyScript} copyState={copyState} logs={logs} />}
+        {!isAdmin && view === 'api' && <ApiView
+            copyScript={copyScript}
+            copyState={copyState}
+            logs={logs}
+            agentNodeId={agentNodeId}
+            setAgentNodeId={setAgentNodeId}
+            agentToken={agentToken}
+            tokenLoading={tokenLoading}
+            tokenError={tokenError}
+            generateAgentToken={generateAgentToken}
+          />}
       </main>
 
       {/* Hard paywall / Blockwall — locks controls when trial expires and not subscribed */}
@@ -426,13 +441,23 @@ function StatBox({ icon, label, value, accent }: { icon: React.ReactNode; label:
 }
 
 /* ---------- API View ---------- */
-function ApiView({ copyScript, copyState, logs }: { copyScript: () => void; copyState: boolean; logs: LogPacket[] }) {
+function ApiView({ copyScript, copyState, logs, agentNodeId, setAgentNodeId, agentToken, tokenLoading, tokenError, generateAgentToken }: {
+  copyScript: () => void;
+  copyState: boolean;
+  logs: LogPacket[];
+  agentNodeId: string;
+  setAgentNodeId: (value: string) => void;
+  agentToken: string;
+  tokenLoading: boolean;
+  tokenError: string;
+  generateAgentToken: () => void;
+}) {
   const recent = logs[0];
   return (
     <div className="fade-in space-y-5">
       <div>
         <h1 className="text-xl font-bold text-ink-100">API & Script Hub</h1>
-        <p className="text-sm text-ink-400">Run the signed Python client locally to stream rack telemetry.</p>
+        <p className="text-sm text-ink-400">Generate a private node credential and run the monitoring-only Python agent.</p>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
@@ -442,13 +467,30 @@ function ApiView({ copyScript, copyState, logs }: { copyScript: () => void; copy
             <div className="flex items-center gap-2 text-sm text-ink-200">
               <Cpu size={15} className="text-volt-500" /> ecovolt_client.py
             </div>
-            <button onClick={copyScript} className="btn-ghost flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs">
+            <div className="flex items-center gap-2">
+              <a href="/ecovolt_agent.py" download="ecovolt_agent.py" className="btn-ghost rounded-md px-2.5 py-1.5 text-xs">Download</a>
+              <button onClick={copyScript} className="btn-ghost flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs">
               {copyState ? <><Check size={13} className="text-volt-500" /> Copied</> : <><Copy size={13} /> Copy</>}
-            </button>
+              </button>
+            </div>
           </div>
-          <pre className="overflow-x-auto p-4 font-mono text-xs leading-relaxed text-ink-200">
-            <code>{PYTHON_SCRIPT}</code>
-          </pre>
+          <div className="space-y-3 p-4">
+            <label className="block text-xs text-ink-300" htmlFor="agent-node-id">Hardware node ID</label>
+            <input id="agent-node-id" value={agentNodeId} onChange={(event) => setAgentNodeId(event.target.value)} maxLength={128} className="input-field w-full" />
+            <button onClick={generateAgentToken} disabled={tokenLoading || !agentNodeId.trim()} className="btn-volt rounded-md px-3 py-2 text-xs disabled:opacity-50">
+              {tokenLoading ? 'Generating…' : 'Generate / Rotate Node Token'}
+            </button>
+            {tokenError && <p role="alert" className="text-xs text-red-400">{tokenError}</p>}
+            {agentToken && (
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+                <p className="text-xs font-semibold text-amber-300">Copy this token now — it will not be shown again.</p>
+                <code className="mt-2 block break-all text-xs text-ink-100">{agentToken}</code>
+                <button onClick={() => navigator.clipboard.writeText(agentToken)} className="btn-ghost mt-2 rounded-md px-2 py-1 text-xs">Copy token</button>
+              </div>
+            )}
+            <p className="text-xs text-ink-400">The agent reads the token from ECOVOLT_AGENT_TOKEN or securely prompts for it. Generating a new token for this node invalidates its previous token.</p>
+            <p className="text-xs text-ink-400">Monitoring only: no hardware settings are changed. Unsupported GPU sensors are reported as unavailable, never simulated.</p>
+          </div>
         </div>
 
         {/* latest packet + schema */}
