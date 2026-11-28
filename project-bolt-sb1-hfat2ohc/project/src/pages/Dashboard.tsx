@@ -3,6 +3,7 @@ import { LogoLockup } from '@/components/Logo';
 import { LiveChart, type ChartPoint } from '@/components/LiveChart';
 import { Blockwall } from '@/components/Blockwall';
 import { useAuth } from '@/lib/auth';
+import { supabase } from '@/lib/supabase';
 import type { DashboardView, LogPacket, Page } from '@/lib/types';
 import {
   Activity, BarChart3, Terminal, Zap, Gauge, Wind, DollarSign, Power, Copy, Check, Cpu, Server, AlertTriangle,
@@ -495,8 +496,13 @@ const [currentTime, setCurrentTime] = useState(Date.now());
 
     const fetchTelemetry = async () => {
       try {
+        const { data: authData } = await supabase.auth.getSession();
+        const accessToken = authData.session?.access_token;
+        if (!accessToken) return;
+
         const response = await fetch('/api/telemetry', {
-          cache: 'no-store'
+          cache: 'no-store',
+          headers: { Authorization: `Bearer ${accessToken}` }
         });
 
         if (!response.ok) {
