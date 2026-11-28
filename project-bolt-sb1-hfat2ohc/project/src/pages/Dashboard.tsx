@@ -221,6 +221,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
         {!isAdmin && view === 'analytics' && <ClientAnalyticsView />}
         {!isAdmin && view === 'api' && <ApiView
             copyScript={copyScript}
+            downloadScript={downloadScript}
             copyState={copyState}
             logs={logs}
             agentNodeId={agentNodeId}
@@ -563,8 +564,9 @@ function StatBox({ icon, label, value, accent }: { icon: React.ReactNode; label:
 }
 
 /* ---------- API View ---------- */
-function ApiView({ copyScript, copyState, logs, agentNodeId, setAgentNodeId, agentToken, tokenLoading, tokenError, generateAgentToken }: {
+function ApiView({ copyScript, downloadScript, copyState, logs, agentNodeId, setAgentNodeId, agentToken, tokenLoading, tokenError, generateAgentToken }: {
   copyScript: () => void;
+  downloadScript: () => void;
   copyState: boolean;
   logs: LogPacket[];
   agentNodeId: string;
