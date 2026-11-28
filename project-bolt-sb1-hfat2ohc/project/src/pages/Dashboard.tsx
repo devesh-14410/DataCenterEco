@@ -163,8 +163,8 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
               </>
             ) : (
               <>
-                <p className="mt-1 text-sm font-semibold text-ink-100">us-east-hyperscale-01</p>
-                <p className="mt-1 text-xs text-volt-400">1,248 GPUs online</p>
+                <p className="mt-1 text-sm font-semibold text-ink-100">Customer workspace</p>
+                <p className="mt-1 text-xs text-ink-400">Hardware not yet connected</p>
               </>
             )}
           </div>
@@ -192,24 +192,8 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
 
         {isAdmin && <AdminMasterPanel />}
 
-        {!isAdmin && view === 'live' && (
-          <div className="space-y-5">
-          <ClientTelemetryPanel />
-          <LiveView
-            aiActive={aiActive}
-            toggleAi={toggleAi}
-            gpuTemp={gpuTemp}
-            power={power}
-            fan={fan}
-            tempHist={tempHist}
-            powerHist={powerHist}
-            fanHist={fanHist}
-            savings={savings}
-            logs={logs}
-          />
-          </div>
-        )}
-        {!isAdmin && view === 'analytics' && <AnalyticsView savings={savings} aiActive={aiActive} powerHist={powerHist} tempHist={tempHist} />}
+        {!isAdmin && view === 'live' && <ClientTelemetryPanel />}
+        {!isAdmin && view === 'analytics' && <ClientAnalyticsView />}
         {!isAdmin && view === 'api' && <ApiView
             copyScript={copyScript}
             copyState={copyState}
@@ -323,6 +307,28 @@ function ClientTelemetryPanel() {
         <p className="mt-4 text-sm text-ink-400">No telemetry has been assigned to this account yet. Generate a node token in API & Script Hub and start the Python agent.</p>
       )}
     </section>
+  );
+}
+
+function ClientAnalyticsView() {
+  return (
+    <div className="fade-in space-y-4">
+      <div>
+        <h1 className="text-xl font-bold text-ink-100">Energy & Performance Analytics</h1>
+        <p className="text-sm text-ink-400">Verified customer measurements only</p>
+      </div>
+      <section className="card-surface rounded-xl border border-amber-500/30 p-5">
+        <div className="flex items-center gap-2 text-sm font-semibold text-amber-300">
+          <AlertTriangle size={16} /> Verified energy baseline not available yet
+        </div>
+        <p className="mt-2 text-sm text-ink-300">
+          Connect a supported power meter or facility-management system and collect a verified baseline before EcoVolt calculates energy consumption, savings, or optimization impact.
+        </p>
+        <p className="mt-2 text-xs text-ink-400">
+          CPU and RAM telemetry alone cannot establish total facility power use, cooling energy, electricity cost, or verified savings. No simulated savings are displayed here.
+        </p>
+      </section>
+    </div>
   );
 }
 
