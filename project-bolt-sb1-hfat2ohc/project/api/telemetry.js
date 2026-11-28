@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { timingSafeEqual } from "node:crypto";
+import { timingSafeEqual, createHash } from "node:crypto";
 
 function verifySecret(provided, expected) {
   if (typeof provided !== "string" || typeof expected !== "string") return false;
@@ -93,10 +93,6 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Invalid telemetry payload" });
     }
 
-    const expectedSecret = process.env.TELEMETRY_SECRET;
-    if (!expectedSecret) return res.status(500).json({ error: "Server authentication is not configured" });
-    if (!verifySecret(body.auth_key, expectedSecret)) return res.status(401).json({ error: "Unauthorized" });
-
     if (
       typeof body.node_id !== "string" || !body.node_id.trim() ||
       !body.metrics || typeof body.metrics !== "object" || Array.isArray(body.metrics)
@@ -104,10 +100,41 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing or invalid telemetry data" });
     }
 
+    let accountId = null;
+    const agentToken = bearerToken(req);
+
+    if (agentToken) {
+      const tokenHash = createHash("sha256").update(agentToken).digest("hex");
+      const { data: credential, error: credentialError } = await supabase
+        .from("agent_credentials")
+        .select("id, account_id, node_id")
+        .eq("token_hash", tokenHash)
+        .is("revoked_at", null)
+        .maybeSingle();
+
+      if (credentialError) {
+        console.error("Agent credential lookup failed:", credentialError.message);
+        return res.status(500).json({ error: "Unable to validate agent credential" });
+      }
+      if (!credential || credential.node_id !== body.node_id.trim()) {
+        return res.status(401).json({ error: "Invalid agent credential or node mismatch" });
+      }
+      accountId = credential.account_id;
+      await supabase
+        .from("agent_credentials")
+        .update({ last_used_at: new Date().toISOString() })
+        .eq("id", credential.id);
+    } else {
+      const expectedSecret = process.env.TELEMETRY_SECRET;
+      if (!expectedSecret) return res.status(500).json({ error: "Server authentication is not configured" });
+      if (!verifySecret(body.auth_key, expectedSecret)) return res.status(401).json({ error: "Unauthorized" });
+    }
+
     const { data, error } = await supabase
       .from("telemetry_readings")
       .insert({
         node_id: body.node_id.trim(),
+        account_id: accountId,
         site_id: typeof body.site_id === "string" ? body.site_id : null,
         facility_type: typeof body.facility_type === "string" ? body.facility_type : "compute_node",
         hardware_type: typeof body.hardware_type === "string" ? body.hardware_type : null,
