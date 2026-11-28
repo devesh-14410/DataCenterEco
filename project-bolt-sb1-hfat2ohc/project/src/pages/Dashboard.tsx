@@ -89,16 +89,41 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
     setSavings(0);
   }
 
+  async function getConfiguredAgentScript() {
+    const response = await fetch('/ecovolt_agent.py', { cache: 'no-store' });
+    if (!response.ok) throw new Error('Unable to load the Python agent file.');
+    const source = await response.text();
+    return source.replace(
+      'https://ecovoltofficial.in/api/telemetry',
+      `${window.location.origin}/api/telemetry`
+    );
+  }
+
   async function copyScript() {
     try {
-      const response = await fetch('/ecovolt_agent.py', { cache: 'no-store' });
-      if (!response.ok) throw new Error('Unable to load the Python agent file.');
-      const script = await response.text();
+      const script = await getConfiguredAgentScript();
       await navigator.clipboard.writeText(script);
       setCopyState(true);
       window.setTimeout(() => setCopyState(false), 1600);
     } catch (error) {
       setTokenError(error instanceof Error ? error.message : 'Unable to copy agent script.');
+    }
+  }
+
+  async function downloadScript() {
+    try {
+      const script = await getConfiguredAgentScript();
+      const blob = new Blob([script], { type: 'text/x-python;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'ecovolt_agent.py';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setTokenError(error instanceof Error ? error.message : 'Unable to download agent script.');
     }
   }
 
@@ -565,7 +590,7 @@ function ApiView({ copyScript, copyState, logs, agentNodeId, setAgentNodeId, age
               <Cpu size={15} className="text-volt-500" /> ecovolt_agent.py
             </div>
             <div className="flex items-center gap-2">
-              <a href="/ecovolt_agent.py" download="ecovolt_agent.py" className="btn-ghost rounded-md px-2.5 py-1.5 text-xs">Download</a>
+              <button onClick={downloadScript} className="btn-ghost rounded-md px-2.5 py-1.5 text-xs">Download</button>
               <button onClick={copyScript} className="btn-ghost flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs">
               {copyState ? <><Check size={13} className="text-volt-500" /> Copied</> : <><Copy size={13} /> Copy</>}
               </button>
@@ -585,7 +610,8 @@ function ApiView({ copyScript, copyState, logs, agentNodeId, setAgentNodeId, age
                 <button onClick={() => navigator.clipboard.writeText(agentToken)} className="btn-ghost mt-2 rounded-md px-2 py-1 text-xs">Copy token</button>
               </div>
             )}
-            <p className="text-xs text-ink-400">The agent reads the token from ECOVOLT_AGENT_TOKEN or securely prompts for it. Generating a new token for this node invalidates its previous token.</p>
+            <p className="text-xs text-ink-400">Download the script from this same environment: its API endpoint is configured to match this app URL. The node ID entered here must match the node ID used by the agent exactly. Generating a new token for this node invalidates its previous token.</p>
+            <p className="text-xs text-ink-400">Keep the token private. Do not paste it into GitHub, screenshots, or support chats.</p>
             <p className="text-xs text-ink-400">Monitoring only: no hardware settings are changed. Unsupported GPU sensors are reported as unavailable, never simulated.</p>
           </div>
         </div>
