@@ -193,6 +193,8 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
         {isAdmin && <AdminMasterPanel />}
 
         {!isAdmin && view === 'live' && (
+          <div className="space-y-5">
+          <ClientTelemetryPanel />
           <LiveView
             aiActive={aiActive}
             toggleAi={toggleAi}
@@ -205,6 +207,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
             savings={savings}
             logs={logs}
           />
+          </div>
         )}
         {!isAdmin && view === 'analytics' && <AnalyticsView savings={savings} aiActive={aiActive} powerHist={powerHist} tempHist={tempHist} />}
         {!isAdmin && view === 'api' && <ApiView
@@ -245,6 +248,94 @@ function NavItem({
   );
 }
 
+/* ---------- Authenticated customer telemetry ---------- */
+function ClientTelemetryPanel() {
+  const [telemetry, setTelemetry] = useState<any>(null);
+  const [error, setError] = useState('');
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadTelemetry() {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
+        if (!token) return;
+
+        const response = await fetch('/api/telemetry', {
+          cache: 'no-store',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Unable to load customer telemetry');
+        if (active) {
+          setTelemetry(result?.node_id ? result : null);
+          setError('');
+        }
+      } catch (err) {
+        if (active) setError(err instanceof Error ? err.message : 'Telemetry request failed');
+      }
+    }
+
+    loadTelemetry();
+    const poll = window.setInterval(loadTelemetry, 5000);
+    const clock = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => {
+      active = false;
+      window.clearInterval(poll);
+      window.clearInterval(clock);
+    };
+  }, []);
+
+  const updatedAt = telemetry?.last_updated ? new Date(telemetry.last_updated).getTime() : NaN;
+  const age = now - updatedAt;
+  const status = !telemetry || !Number.isFinite(updatedAt) || age > 60000
+    ? 'OFFLINE'
+    : age > 10000 ? 'STALE' : 'LIVE';
+  const metrics = telemetry?.metrics ?? {};
+
+  return (
+    <section className="card-surface rounded-xl p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-ink-100">Your Connected Hardware</h2>
+          <p className="text-xs text-ink-400">Authenticated telemetry for your customer account</p>
+        </div>
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${status === 'LIVE' ? 'bg-volt-500/15 text-volt-400' : status === 'STALE' ? 'bg-amber-500/15 text-amber-400' : 'bg-red-500/15 text-red-400'}`}>
+          {status}
+        </span>
+      </div>
+      {error && <p role="alert" className="mt-3 text-xs text-red-400">{error}</p>}
+      {telemetry ? (
+        <>
+          <p className="mt-3 text-sm text-ink-200">{telemetry.node_id}</p>
+          <p className="text-xs text-ink-400">{telemetry.hardware_type ?? 'Hardware details unavailable'}</p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <MetricValue label="CPU Utilization" value={metrics.cpu_utilization_percent} suffix="%" />
+            <MetricValue label="RAM Utilization" value={metrics.ram_utilization_percent} suffix="%" />
+            <MetricValue label="GPU Engine Peak" value={metrics.gpu_engine_peak_utilization_percent} suffix="%" />
+            <MetricValue label="GPU Temperature" value={metrics.gpu_temperature_celsius} suffix="°C" />
+          </div>
+          <p className="mt-4 text-xs text-ink-400">Last updated: {new Date(telemetry.last_updated).toLocaleString()}</p>
+        </>
+      ) : (
+        <p className="mt-4 text-sm text-ink-400">No telemetry has been assigned to this account yet. Generate a node token in API & Script Hub and start the Python agent.</p>
+      )}
+    </section>
+  );
+}
+
+function MetricValue({ label, value, suffix }: { label: string; value: unknown; suffix: string }) {
+  const display = typeof value === 'number' && Number.isFinite(value) ? `${value}${suffix}` : 'N/A';
+  return (
+    <div>
+      <p className="text-xs text-ink-400">{label}</p>
+      <p className="text-xl font-bold text-volt-400">{display}</p>
+    </div>
+  );
+}
+
 /* ---------- Live View ---------- */
 function LiveView(props: {
   aiActive: boolean;
@@ -265,7 +356,7 @@ function LiveView(props: {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-bold text-ink-100">Live Infrastructure</h1>
-          <p className="text-sm text-ink-400">Streaming every 1s · cluster us-east-hyperscale-01</p>
+          <p className="text-sm text-ink-400">Below charts and savings are demo simulations, not measured customer results.</p>
         </div>
         <AiToggle active={aiActive} onClick={toggleAi} />
       </div>
@@ -278,7 +369,7 @@ function LiveView(props: {
               <DollarSign size={20} />
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wider text-ink-400">Live Capital Saved This Month ($ USD)</p>
+              <p className="text-xs uppercase tracking-wider text-ink-400">Demo Savings Counter ($ USD)</p>
               <p className={`text-3xl font-extrabold tabular-nums ${aiActive ? 'text-volt-500 text-glow' : 'text-ink-300'}`}>
                 ${savings.toLocaleString()}
               </p>
