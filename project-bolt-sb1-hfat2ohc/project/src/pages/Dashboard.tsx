@@ -3,6 +3,7 @@ import { LogoLockup } from '@/components/Logo';
 import { LiveChart, type ChartPoint } from '@/components/LiveChart';
 import { Blockwall } from '@/components/Blockwall';
 import { useAuth } from '@/lib/auth';
+import { supabase } from '@/lib/supabase';
 import type { DashboardView, LogPacket, Page } from '@/lib/types';
 import {
   Activity, BarChart3, Terminal, Zap, Gauge, Wind, DollarSign, Power, Copy, Check, Cpu, Server, AlertTriangle,
@@ -11,39 +12,7 @@ import {
 
 const MAX_POINTS = 30;
 
-const PYTHON_SCRIPT = `#!/usr/bin/env python3
-"""EcoVolt AI — signed telemetry client. Stream rack metrics to the agent."""
-import json, time, socket, hmac, hashlib, random
 
-ECOVOLT_ENDPOINT = "agent.ecovolt.ai"
-ECOVOLT_PORT = 443
-SECRET = "your-ed25519-shared-secret"
-
-def sign(payload: str) -> str:
-    return hmac.new(SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
-
-def read_sensors():
-    return {
-        "status": "success",
-        "gpu_temp": round(random.uniform(58, 72), 2),
-        "power_usage": round(random.uniform(330, 460), 2),
-        "fan_speed": round(random.uniform(3000, 5200), 1),
-    }
-
-def main():
-    while True:
-        packet = read_sensors()
-        body = json.dumps(packet)
-        signature = sign(body)
-        print(f"[ecovolt] tx -> {body}  sig={signature[:16]}...")
-        # sock = socket.create_connection((ECOVOLT_ENDPOINT, ECOVOLT_PORT))
-        # sock.sendall(body.encode())
-        # sock.close()
-        time.sleep(5)
-
-if __name__ == "__main__":
-    main()
-`;
 
 export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
   const { session, isTrialExpired, role } = useAuth();
@@ -68,6 +37,10 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
   const [logs, setLogs] = useState<LogPacket[]>([]);
   const [savings, setSavings] = useState(0);
   const [copyState, setCopyState] = useState(false);
+  const [agentNodeId, setAgentNodeId] = useState('ecovolt-node-01');
+  const [agentToken, setAgentToken] = useState('');
+  const [tokenLoading, setTokenLoading] = useState(false);
+  const [tokenError, setTokenError] = useState('');
 
   const tick = useRef(0);
   const savingsRef = useRef(0);
@@ -116,11 +89,69 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
     setSavings(0);
   }
 
-  function copyScript() {
-    navigator.clipboard?.writeText(PYTHON_SCRIPT).then(() => {
+  async function getConfiguredAgentScript() {
+    const response = await fetch('/ecovolt_agent.py', { cache: 'no-store' });
+    if (!response.ok) throw new Error('Unable to load the Python agent file.');
+    const source = await response.text();
+    return source.replace(
+      'https://ecovoltofficial.in/api/telemetry',
+      `${window.location.origin}/api/telemetry`
+    );
+  }
+
+  async function copyScript() {
+    try {
+      const script = await getConfiguredAgentScript();
+      await navigator.clipboard.writeText(script);
       setCopyState(true);
-      setTimeout(() => setCopyState(false), 1600);
-    });
+      window.setTimeout(() => setCopyState(false), 1600);
+    } catch (error) {
+      setTokenError(error instanceof Error ? error.message : 'Unable to copy agent script.');
+    }
+  }
+
+  async function downloadScript() {
+    try {
+      const script = await getConfiguredAgentScript();
+      const blob = new Blob([script], { type: 'text/x-python;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'ecovolt_agent.py';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setTokenError(error instanceof Error ? error.message : 'Unable to download agent script.');
+    }
+  }
+
+  async function generateAgentToken() {
+    setTokenLoading(true);
+    setTokenError('');
+    setAgentToken('');
+    try {
+      const { data: authData } = await supabase.auth.getSession();
+      const accessToken = authData.session?.access_token;
+      if (!accessToken) throw new Error('Please sign in again before generating an agent token.');
+
+      const response = await fetch('/api/agent-credentials', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ node_id: agentNodeId.trim() }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Unable to generate agent token.');
+      setAgentToken(result.agent_token);
+    } catch (error) {
+      setTokenError(error instanceof Error ? error.message : 'Unable to generate agent token.');
+    } finally {
+      setTokenLoading(false);
+    }
   }
 
   return (
@@ -157,8 +188,8 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
               </>
             ) : (
               <>
-                <p className="mt-1 text-sm font-semibold text-ink-100">us-east-hyperscale-01</p>
-                <p className="mt-1 text-xs text-volt-400">1,248 GPUs online</p>
+                <p className="mt-1 text-sm font-semibold text-ink-100">Customer workspace</p>
+                <p className="mt-1 text-xs text-ink-400">Hardware not yet connected</p>
               </>
             )}
           </div>
@@ -186,22 +217,20 @@ export function Dashboard({ onNavigate }: { onNavigate: (p: Page) => void }) {
 
         {isAdmin && <AdminMasterPanel />}
 
-        {!isAdmin && view === 'live' && (
-          <LiveView
-            aiActive={aiActive}
-            toggleAi={toggleAi}
-            gpuTemp={gpuTemp}
-            power={power}
-            fan={fan}
-            tempHist={tempHist}
-            powerHist={powerHist}
-            fanHist={fanHist}
-            savings={savings}
+        {!isAdmin && view === 'live' && <ClientTelemetryPanel />}
+        {!isAdmin && view === 'analytics' && <ClientAnalyticsView />}
+        {!isAdmin && view === 'api' && <ApiView
+            copyScript={copyScript}
+            downloadScript={downloadScript}
+            copyState={copyState}
             logs={logs}
-          />
-        )}
-        {!isAdmin && view === 'analytics' && <AnalyticsView savings={savings} aiActive={aiActive} powerHist={powerHist} tempHist={tempHist} />}
-        {!isAdmin && view === 'api' && <ApiView copyScript={copyScript} copyState={copyState} logs={logs} />}
+            agentNodeId={agentNodeId}
+            setAgentNodeId={setAgentNodeId}
+            agentToken={agentToken}
+            tokenLoading={tokenLoading}
+            tokenError={tokenError}
+            generateAgentToken={generateAgentToken}
+          />}
       </main>
 
       {/* Hard paywall / Blockwall — locks controls when trial expires and not subscribed */}
@@ -229,6 +258,116 @@ function NavItem({
   );
 }
 
+/* ---------- Authenticated customer telemetry ---------- */
+function ClientTelemetryPanel() {
+  const [telemetry, setTelemetry] = useState<any>(null);
+  const [error, setError] = useState('');
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadTelemetry() {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
+        if (!token) return;
+
+        const response = await fetch('/api/telemetry', {
+          cache: 'no-store',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Unable to load customer telemetry');
+        if (active) {
+          setTelemetry(result?.node_id ? result : null);
+          setError('');
+        }
+      } catch (err) {
+        if (active) setError(err instanceof Error ? err.message : 'Telemetry request failed');
+      }
+    }
+
+    loadTelemetry();
+    const poll = window.setInterval(loadTelemetry, 5000);
+    const clock = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => {
+      active = false;
+      window.clearInterval(poll);
+      window.clearInterval(clock);
+    };
+  }, []);
+
+  const updatedAt = telemetry?.last_updated ? new Date(telemetry.last_updated).getTime() : NaN;
+  const age = now - updatedAt;
+  const status = !telemetry || !Number.isFinite(updatedAt) || age > 60000
+    ? 'OFFLINE'
+    : age > 10000 ? 'STALE' : 'LIVE';
+  const metrics = telemetry?.metrics ?? {};
+
+  return (
+    <section className="card-surface rounded-xl p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-ink-100">Your Connected Hardware</h2>
+          <p className="text-xs text-ink-400">Authenticated telemetry for your customer account</p>
+        </div>
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${status === 'LIVE' ? 'bg-volt-500/15 text-volt-400' : status === 'STALE' ? 'bg-amber-500/15 text-amber-400' : 'bg-red-500/15 text-red-400'}`}>
+          {status}
+        </span>
+      </div>
+      {error && <p role="alert" className="mt-3 text-xs text-red-400">{error}</p>}
+      {telemetry ? (
+        <>
+          <p className="mt-3 text-sm text-ink-200">{telemetry.node_id}</p>
+          <p className="text-xs text-ink-400">{telemetry.hardware_type ?? 'Hardware details unavailable'}</p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <MetricValue label="CPU Utilization" value={metrics.cpu_utilization_percent} suffix="%" />
+            <MetricValue label="RAM Utilization" value={metrics.ram_utilization_percent} suffix="%" />
+            <MetricValue label="GPU Engine Peak" value={metrics.gpu_engine_peak_utilization_percent} suffix="%" />
+            <MetricValue label="GPU Temperature" value={metrics.gpu_temperature_celsius} suffix="°C" />
+          </div>
+          <p className="mt-4 text-xs text-ink-400">Last updated: {new Date(telemetry.last_updated).toLocaleString()}</p>
+        </>
+      ) : (
+        <p className="mt-4 text-sm text-ink-400">No telemetry has been assigned to this account yet. Generate a node token in API & Script Hub and start the Python agent.</p>
+      )}
+    </section>
+  );
+}
+
+function ClientAnalyticsView() {
+  return (
+    <div className="fade-in space-y-4">
+      <div>
+        <h1 className="text-xl font-bold text-ink-100">Energy & Performance Analytics</h1>
+        <p className="text-sm text-ink-400">Verified customer measurements only</p>
+      </div>
+      <section className="card-surface rounded-xl border border-amber-500/30 p-5">
+        <div className="flex items-center gap-2 text-sm font-semibold text-amber-300">
+          <AlertTriangle size={16} /> Verified energy baseline not available yet
+        </div>
+        <p className="mt-2 text-sm text-ink-300">
+          Connect a supported power meter or facility-management system and collect a verified baseline before EcoVolt calculates energy consumption, savings, or optimization impact.
+        </p>
+        <p className="mt-2 text-xs text-ink-400">
+          CPU and RAM telemetry alone cannot establish total facility power use, cooling energy, electricity cost, or verified savings. No simulated savings are displayed here.
+        </p>
+      </section>
+    </div>
+  );
+}
+
+function MetricValue({ label, value, suffix }: { label: string; value: unknown; suffix: string }) {
+  const display = typeof value === 'number' && Number.isFinite(value) ? `${value}${suffix}` : 'N/A';
+  return (
+    <div>
+      <p className="text-xs text-ink-400">{label}</p>
+      <p className="text-xl font-bold text-volt-400">{display}</p>
+    </div>
+  );
+}
+
 /* ---------- Live View ---------- */
 function LiveView(props: {
   aiActive: boolean;
@@ -249,7 +388,7 @@ function LiveView(props: {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-bold text-ink-100">Live Infrastructure</h1>
-          <p className="text-sm text-ink-400">Streaming every 1s · cluster us-east-hyperscale-01</p>
+          <p className="text-sm text-ink-400">Below charts and savings are demo simulations, not measured customer results.</p>
         </div>
         <AiToggle active={aiActive} onClick={toggleAi} />
       </div>
@@ -262,7 +401,7 @@ function LiveView(props: {
               <DollarSign size={20} />
             </div>
             <div>
-              <p className="text-xs uppercase tracking-wider text-ink-400">Live Capital Saved This Month ($ USD)</p>
+              <p className="text-xs uppercase tracking-wider text-ink-400">Demo Savings Counter ($ USD)</p>
               <p className={`text-3xl font-extrabold tabular-nums ${aiActive ? 'text-volt-500 text-glow' : 'text-ink-300'}`}>
                 ${savings.toLocaleString()}
               </p>
@@ -425,13 +564,24 @@ function StatBox({ icon, label, value, accent }: { icon: React.ReactNode; label:
 }
 
 /* ---------- API View ---------- */
-function ApiView({ copyScript, copyState, logs }: { copyScript: () => void; copyState: boolean; logs: LogPacket[] }) {
-  const recent = logs[0];
+function ApiView({ copyScript, downloadScript, copyState, logs, agentNodeId, setAgentNodeId, agentToken, tokenLoading, tokenError, generateAgentToken }: {
+  copyScript: () => void;
+  downloadScript: () => void;
+  copyState: boolean;
+  logs: LogPacket[];
+  agentNodeId: string;
+  setAgentNodeId: (value: string) => void;
+  agentToken: string;
+  tokenLoading: boolean;
+  tokenError: string;
+  generateAgentToken: () => void;
+}) {
+  void logs;
   return (
     <div className="fade-in space-y-5">
       <div>
         <h1 className="text-xl font-bold text-ink-100">API & Script Hub</h1>
-        <p className="text-sm text-ink-400">Run the signed Python client locally to stream rack telemetry.</p>
+        <p className="text-sm text-ink-400">Generate a private node credential and run the monitoring-only Python agent.</p>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
@@ -439,41 +589,46 @@ function ApiView({ copyScript, copyState, logs }: { copyScript: () => void; copy
         <div className="card-surface overflow-hidden rounded-xl">
           <div className="flex items-center justify-between border-b border-ink-700/60 px-4 py-3">
             <div className="flex items-center gap-2 text-sm text-ink-200">
-              <Cpu size={15} className="text-volt-500" /> ecovolt_client.py
+              <Cpu size={15} className="text-volt-500" /> ecovolt_agent.py
             </div>
-            <button onClick={copyScript} className="btn-ghost flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs">
+            <div className="flex items-center gap-2">
+              <button onClick={downloadScript} className="btn-ghost rounded-md px-2.5 py-1.5 text-xs">Download</button>
+              <button onClick={copyScript} className="btn-ghost flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs">
               {copyState ? <><Check size={13} className="text-volt-500" /> Copied</> : <><Copy size={13} /> Copy</>}
-            </button>
+              </button>
+            </div>
           </div>
-          <pre className="overflow-x-auto p-4 font-mono text-xs leading-relaxed text-ink-200">
-            <code>{PYTHON_SCRIPT}</code>
-          </pre>
+          <div className="space-y-3 p-4">
+            <label className="block text-xs text-ink-300" htmlFor="agent-node-id">Hardware node ID</label>
+            <input id="agent-node-id" value={agentNodeId} onChange={(event) => setAgentNodeId(event.target.value)} maxLength={128} className="input-field w-full" />
+            <button onClick={generateAgentToken} disabled={tokenLoading || !agentNodeId.trim()} className="btn-volt rounded-md px-3 py-2 text-xs disabled:opacity-50">
+              {tokenLoading ? 'Generating…' : 'Generate / Rotate Node Token'}
+            </button>
+            {tokenError && <p role="alert" className="text-xs text-red-400">{tokenError}</p>}
+            {agentToken && (
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+                <p className="text-xs font-semibold text-amber-300">Copy this token now — it will not be shown again.</p>
+                <code className="mt-2 block break-all text-xs text-ink-100">{agentToken}</code>
+                <button onClick={() => navigator.clipboard.writeText(agentToken)} className="btn-ghost mt-2 rounded-md px-2 py-1 text-xs">Copy token</button>
+              </div>
+            )}
+            <p className="text-xs text-ink-400">Download the script from this same environment: its API endpoint is configured to match this app URL. The node ID entered here must match the node ID used by the agent exactly. Generating a new token for this node invalidates its previous token.</p>
+            <p className="text-xs text-ink-400">Keep the token private. Do not paste it into GitHub, screenshots, or support chats.</p>
+            <p className="text-xs text-ink-400">Monitoring only: no hardware settings are changed. Unsupported GPU sensors are reported as unavailable, never simulated.</p>
+          </div>
         </div>
 
-        {/* latest packet + schema */}
-        <div className="space-y-5">
-          <div className="card-surface rounded-xl p-5">
-            <p className="text-xs uppercase tracking-wider text-ink-400">Latest packet</p>
-            {recent ? (
-              <pre className="mt-3 overflow-x-auto rounded-lg bg-ink-950/60 p-3 font-mono text-xs text-volt-300">
-{JSON.stringify(
-  { status: recent.status, gpu_temp: recent.gpu_temp, power_usage: recent.power_usage, fan_speed: recent.fan_speed },
-  null, 2,
-)}
-              </pre>
-            ) : (
-              <p className="mt-3 text-sm text-ink-500">awaiting telemetry…</p>
-            )}
-          </div>
-          <div className="card-surface rounded-xl p-5">
-            <p className="text-xs uppercase tracking-wider text-ink-400">Payload schema</p>
-            <ul className="mt-3 space-y-2 text-sm text-ink-200">
-              <li><code className="text-volt-400">status</code> · string — "success" | "warn"</li>
-              <li><code className="text-volt-400">gpu_temp</code> · float — Celsius</li>
-              <li><code className="text-volt-400">power_usage</code> · float — kilowatts</li>
-              <li><code className="text-volt-400">fan_speed</code> · float — RPM</li>
-            </ul>
-          </div>
+        {/* measured telemetry fields */}
+        <div className="card-surface rounded-xl p-5">
+          <p className="text-xs uppercase tracking-wider text-ink-400">Telemetry collected</p>
+          <ul className="mt-3 space-y-2 text-sm text-ink-200">
+            <li><code className="text-volt-400">cpu_utilization_percent</code> · measured CPU usage</li>
+            <li><code className="text-volt-400">ram_utilization_percent</code> · measured system RAM usage</li>
+            <li><code className="text-volt-400">gpu_engine_peak_utilization_percent</code> · Windows GPU engine peak; not total GPU usage</li>
+            <li><code className="text-volt-400">gpu_adapter_memory</code> · per-adapter dedicated/shared memory counters when Windows exposes them</li>
+          </ul>
+          <p className="mt-4 text-xs text-ink-400">GPU temperature, total GPU utilization, VRAM percentage and GPU power are null until a verified hardware sensor is available. No random or simulated sensor values are sent.</p>
+          <p className="mt-3 text-xs text-ink-400">The agent monitors only. It does not change hardware settings or run optimization commands.</p>
         </div>
       </div>
     </div>
@@ -495,8 +650,13 @@ const [currentTime, setCurrentTime] = useState(Date.now());
 
     const fetchTelemetry = async () => {
       try {
+        const { data: authData } = await supabase.auth.getSession();
+        const accessToken = authData.session?.access_token;
+        if (!accessToken) return;
+
         const response = await fetch('/api/telemetry', {
-          cache: 'no-store'
+          cache: 'no-store',
+          headers: { Authorization: `Bearer ${accessToken}` }
         });
 
         if (!response.ok) {
@@ -569,80 +729,49 @@ const nodeStatus = !telemetry
       </div>
             {/* Connected Hardware Node */}
       <div className="card-surface rounded-xl p-5">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-ink-100">
-            Connected HP Omen Node
-          </h2>
-
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-bold text-ink-100">Connected Hardware Node</h2>
           <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-  nodeStatus === 'LIVE'
-    ? 'bg-volt-500/15 text-volt-400'
-    : nodeStatus === 'STALE'
-      ? 'bg-amber-500/15 text-amber-400'
-      : 'bg-red-500/15 text-red-400'
-}`}>
-  {nodeStatus === 'LIVE'
-    ? '● LIVE'
-    : nodeStatus === 'STALE'
-      ? '● STALE'
-      : '● OFFLINE'}
-</span>
-</div>
-              </div>
+            nodeStatus === 'LIVE'
+              ? 'bg-volt-500/15 text-volt-400'
+              : nodeStatus === 'STALE'
+                ? 'bg-amber-500/15 text-amber-400'
+                : 'bg-red-500/15 text-red-400'
+          }`}>
+            {nodeStatus === 'LIVE' ? '● LIVE' : nodeStatus === 'STALE' ? '● STALE' : '● OFFLINE'}
+          </span>
+        </div>
 
-              <div>
-                <p className="text-xs text-ink-400">GPU Power Draw</p>
-                <p className="text-2xl font-bold text-green-400">
-                  {te
-        
         {telemetry?.metrics ? (
           <>
-            <p className="mt-3 text-sm text-ink-300">
-              {telemetry.node_id}
-            </p>
-
-            <p className="text-xs text-ink-400">
-              {telemetry.hardware_type}
-            </p>
+            <p className="mt-3 text-sm text-ink-300">{telemetry.node_id}</p>
+            <p className="text-xs text-ink-400">{telemetry.hardware_type ?? 'Hardware details unavailable'}</p>
 
             <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-
               <div>
                 <p className="text-xs text-ink-400">CPU Utilization</p>
-                <p className="text-2xl font-bold text-volt-400">
-                  {telemetry.metrics.cpu_utilization_percent ?? 'N/A'}%
-                </p>
+                <p className="text-2xl font-bold text-volt-400">{telemetry.metrics.cpu_utilization_percent ?? 'N/A'}%</p>
               </div>
-
               <div>
                 <p className="text-xs text-ink-400">RAM Utilization</p>
-                <p className="text-2xl font-bold text-volt-400">
-                  {telemetry.metrics.ram_utilization_percent ?? 'N/A'}%
-                </p>
+                <p className="text-2xl font-bold text-volt-400">{telemetry.metrics.ram_utilization_percent ?? 'N/A'}%</p>
               </div>
-
               <div>
                 <p className="text-xs text-ink-400">GPU Temperature</p>
-                <p className="text-2xl font-bold text-amber-400">
-                  {telemetry.metrics.gpu_temperature_celsius ?? 'N/A'}°C
-                </p>
+                <p className="text-2xl font-bold text-amber-400">{telemetry.metrics.gpu_temperature_celsius ?? 'N/A'}°C</p>
               </div>
-
               <div>
                 <p className="text-xs text-ink-400">GPU Utilization</p>
-                <p className="text-2xl font-bold text-volt-400">
-                  {telemetry.metrics.gpu_utilization_percent ?? 'N/A'}%
-                </p>
+                <p className="text-2xl font-bold text-volt-400">{telemetry.metrics.gpu_utilization_percent ?? 'N/A'}%</p>
               </div>
-
               <div>
                 <p className="text-xs text-ink-400">GPU Memory Utilization</p>
-                <p className="text-2xl font-bold text-purple-400">
-                  {telemetry.metrics.vram_utilization_percent ?? 'N/A'}%
-               </p>lemetry.metrics.gpu_power_draw_watts ?? 'N/A'} W
-                 </p>
+                <p className="text-2xl font-bold text-purple-400">{telemetry.metrics.vram_utilization_percent ?? 'N/A'}%</p>
               </div>
-
+              <div>
+                <p className="text-xs text-ink-400">GPU Power Draw</p>
+                <p className="text-2xl font-bold text-green-400">{telemetry.metrics.gpu_power_draw_watts ?? 'N/A'} W</p>
+              </div>
             </div>
 
             <p className="mt-5 text-xs text-ink-400">
@@ -653,7 +782,7 @@ const nodeStatus = !telemetry
           </>
         ) : (
           <p className="mt-4 text-sm text-ink-400">
-           Waiting for hardware telemetry. Start the EcoVolt Integration Agent to connect your system.
+            Waiting for hardware telemetry. Start the EcoVolt Integration Agent to connect your system.
           </p>
         )}
       </div>
