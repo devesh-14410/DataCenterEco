@@ -9,7 +9,9 @@ interface AuthContextValue {
   role: Role | null;
   isTrialExpired: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (name: string, email: string, password: string) => Promise<boolean>;
+  signup: (name: string, email: string, password: string) => Promise<void>;
+  verifySignupOtp: (email: string, token: string) => Promise<void>;
+  resendSignupOtp: (email: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   subscribe: (tier: string) => void;
@@ -67,13 +69,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signup(name: string, email: string, password: string) {
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: name } },
+      options: {
+        data: { full_name: name },
+        emailRedirectTo: window.location.origin,
+      },
     });
     if (error) throw error;
-    return Boolean(data.session);
+  }
+
+  async function verifySignupOtp(email: string, token: string) {
+    const { error } = await supabase.auth.verifyOtp({
+      email,
+      token: token.trim(),
+      type: 'signup',
+    });
+    if (error) throw error;
+  }
+
+  async function resendSignupOtp(email: string) {
+    const { error } = await supabase.auth.resend({ type: 'signup', email });
+    if (error) throw error;
   }
 
   async function resetPassword(email: string) {
@@ -104,7 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, session, role, isTrialExpired, login, signup, resetPassword, logout, subscribe }}>
+    <AuthContext.Provider value={{ user, session, role, isTrialExpired, login, signup, verifySignupOtp, resendSignupOtp, resetPassword, logout, subscribe }}>
       {children}
     </AuthContext.Provider>
   );
