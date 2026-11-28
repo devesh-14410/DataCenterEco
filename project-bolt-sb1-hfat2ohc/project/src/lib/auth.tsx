@@ -10,6 +10,8 @@ interface AuthContextValue {
   isTrialExpired: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (name: string, email: string, password: string) => Promise<boolean>;
+  verifySignupOtp: (email: string, token: string) => Promise<void>;
+  resendSignupOtp: (email: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   subscribe: (tier: string) => void;
@@ -76,6 +78,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return Boolean(data.session);
   }
 
+  async function verifySignupOtp(email: string, token: string) {
+    const { error } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: 'signup',
+    });
+    if (error) throw error;
+  }
+
+  async function resendSignupOtp(email: string) {
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+    });
+    if (error) throw error;
+  }
+
   async function resetPassword(email: string) {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: window.location.origin,
@@ -104,7 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, session, role, isTrialExpired, login, signup, resetPassword, logout, subscribe }}>
+    <AuthContext.Provider value={{ user, session, role, isTrialExpired, login, signup, verifySignupOtp, resendSignupOtp, resetPassword, logout, subscribe }}>
       {children}
     </AuthContext.Provider>
   );
