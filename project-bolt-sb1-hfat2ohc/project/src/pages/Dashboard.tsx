@@ -452,7 +452,7 @@ function ApiView({ copyScript, copyState, logs, agentNodeId, setAgentNodeId, age
   tokenError: string;
   generateAgentToken: () => void;
 }) {
-  const recent = logs[0];
+  void logs;
   return (
     <div className="fade-in space-y-5">
       <div>
@@ -465,7 +465,7 @@ function ApiView({ copyScript, copyState, logs, agentNodeId, setAgentNodeId, age
         <div className="card-surface overflow-hidden rounded-xl">
           <div className="flex items-center justify-between border-b border-ink-700/60 px-4 py-3">
             <div className="flex items-center gap-2 text-sm text-ink-200">
-              <Cpu size={15} className="text-volt-500" /> ecovolt_client.py
+              <Cpu size={15} className="text-volt-500" /> ecovolt_agent.py
             </div>
             <div className="flex items-center gap-2">
               <a href="/ecovolt_agent.py" download="ecovolt_agent.py" className="btn-ghost rounded-md px-2.5 py-1.5 text-xs">Download</a>
@@ -493,30 +493,17 @@ function ApiView({ copyScript, copyState, logs, agentNodeId, setAgentNodeId, age
           </div>
         </div>
 
-        {/* latest packet + schema */}
-        <div className="space-y-5">
-          <div className="card-surface rounded-xl p-5">
-            <p className="text-xs uppercase tracking-wider text-ink-400">Latest packet</p>
-            {recent ? (
-              <pre className="mt-3 overflow-x-auto rounded-lg bg-ink-950/60 p-3 font-mono text-xs text-volt-300">
-{JSON.stringify(
-  { status: recent.status, gpu_temp: recent.gpu_temp, power_usage: recent.power_usage, fan_speed: recent.fan_speed },
-  null, 2,
-)}
-              </pre>
-            ) : (
-              <p className="mt-3 text-sm text-ink-500">awaiting telemetry…</p>
-            )}
-          </div>
-          <div className="card-surface rounded-xl p-5">
-            <p className="text-xs uppercase tracking-wider text-ink-400">Payload schema</p>
-            <ul className="mt-3 space-y-2 text-sm text-ink-200">
-              <li><code className="text-volt-400">status</code> · string — "success" | "warn"</li>
-              <li><code className="text-volt-400">gpu_temp</code> · float — Celsius</li>
-              <li><code className="text-volt-400">power_usage</code> · float — kilowatts</li>
-              <li><code className="text-volt-400">fan_speed</code> · float — RPM</li>
-            </ul>
-          </div>
+        {/* measured telemetry fields */}
+        <div className="card-surface rounded-xl p-5">
+          <p className="text-xs uppercase tracking-wider text-ink-400">Telemetry collected</p>
+          <ul className="mt-3 space-y-2 text-sm text-ink-200">
+            <li><code className="text-volt-400">cpu_utilization_percent</code> · measured CPU usage</li>
+            <li><code className="text-volt-400">ram_utilization_percent</code> · measured system RAM usage</li>
+            <li><code className="text-volt-400">gpu_engine_peak_utilization_percent</code> · Windows GPU engine peak; not total GPU usage</li>
+            <li><code className="text-volt-400">gpu_adapter_memory</code> · per-adapter dedicated/shared memory counters when Windows exposes them</li>
+          </ul>
+          <p className="mt-4 text-xs text-ink-400">GPU temperature, total GPU utilization, VRAM percentage and GPU power are null until a verified hardware sensor is available. No random or simulated sensor values are sent.</p>
+          <p className="mt-3 text-xs text-ink-400">The agent monitors only. It does not change hardware settings or run optimization commands.</p>
         </div>
       </div>
     </div>
