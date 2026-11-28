@@ -43,12 +43,14 @@ export default async function handler(req, res) {
     const tokenHash = createHash("sha256").update(token).digest("hex");
     const { error: insertError } = await supabase
       .from("agent_credentials")
-      .insert({
+      .upsert({
         account_id: account.account_id,
         node_id: nodeId,
         token_hash: tokenHash,
-        token_prefix: token.slice(0, 8)
-      });
+        token_prefix: token.slice(0, 8),
+        created_at: new Date().toISOString(),
+        revoked_at: null
+      }, { onConflict: "account_id,node_id" });
 
     if (insertError) {
       console.error("Agent credential creation failed:", insertError.message);
