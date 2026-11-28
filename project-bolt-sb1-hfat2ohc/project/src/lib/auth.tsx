@@ -1,98 +1,110 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import type { Session as SupabaseSession } from '@supabase/supabase-js';
 import type { User, Session, Role } from '@/lib/types';
+import { supabase } from '@/lib/supabase';
 
 interface AuthContextValue {
   user: User | null;
   session: Session | null;
   role: Role | null;
   isTrialExpired: boolean;
-  login: (user: User, remember: boolean) => void;
-  logout: () => void;
+  login: (email: string, password: string) => Promise<void>;
+  signup: (name: string, email: string, password: string) => Promise<boolean>;
+  resetPassword: (email: string) => Promise<void>;
+  logout: () => Promise<void>;
   subscribe: (tier: string) => void;
 }
 
-const REMEMBER_KEY = 'ecovolt_session_remember';
-const SESSION_KEY = 'ecovolt_session';
-
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function addDays(date: Date, days: number): Date {
-  const d = new Date(date.getTime());
-  d.setDate(d.getDate() + days);
-  return d;
-}
+function mapSession(authSession: SupabaseSession): Session {
+  const authUser = authSession.user;
+  const role: Role = authUser.app_metadata?.role === 'admin' ? 'admin' : 'client';
+  const started = authUser.user_metadata?.trial_started_date ?? authUser.created_at;
+  const expires = authUser.user_metadata?.trial_expired_date ??
+    new Date(new Date(started).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-function createSession(u: User): Session {
-  const start = new Date();
-  const end = addDays(start, 30);
   return {
-    user: u,
-    is_subscribed: false,
-    trial_started_date: start.toISOString(),
-    trial_expired_date: end.toISOString(),
-    tier: null,
-    role: (u.email.toLowerCase() === 'deveshbarot14410@gmail.com' ? 'admin' : 'client') as Role,
+    user: {
+      name: authUser.user_metadata?.full_name ?? authUser.email?.split('@')[0] ?? 'Operator',
+      email: authUser.email ?? '',
+    },
+    is_subscribed: authUser.app_metadata?.is_subscribed === true,
+    trial_started_date: started,
+    trial_expired_date: expires,
+    tier: authUser.app_metadata?.tier ?? null,
+    role,
   };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
+  const [authSession, setAuthSession] = useState<SupabaseSession | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      const remember = localStorage.getItem(REMEMBER_KEY) === 'true';
-      const store = remember ? localStorage : sessionStorage;
-      const raw = store.getItem(SESSION_KEY);
-      if (raw) {
-        setSession(JSON.parse(raw) as Session);
-      }
-    } catch {
-      // ignore malformed storage
-    }
+    let mounted = true;
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!mounted) return;
+      if (error) console.error('Session restore failed:', error.message);
+      setAuthSession(data.session);
+      setLoading(false);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setAuthSession(nextSession);
+      setLoading(false);
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
-  function persist(s: Session, remember: boolean) {
-    const json = JSON.stringify(s);
-    if (remember) {
-      localStorage.setItem(REMEMBER_KEY, 'true');
-      localStorage.setItem(SESSION_KEY, json);
-      sessionStorage.removeItem(SESSION_KEY);
-    } else {
-      localStorage.removeItem(REMEMBER_KEY);
-      sessionStorage.setItem(SESSION_KEY, json);
-      localStorage.removeItem(SESSION_KEY);
-    }
+  async function login(email: string, password: string) {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
   }
 
-  function login(u: User, remember: boolean) {
-    const s = createSession(u);
-    setSession(s);
-    persist(s, remember);
-  }
-
-  function logout() {
-    setSession(null);
-    localStorage.removeItem(REMEMBER_KEY);
-    localStorage.removeItem(SESSION_KEY);
-    sessionStorage.removeItem(SESSION_KEY);
-  }
-
-  function subscribe(tier: string) {
-    setSession((prev) => {
-      if (!prev) return prev;
-      const next: Session = { ...prev, is_subscribed: true, tier };
-      const remember = localStorage.getItem(REMEMBER_KEY) === 'true';
-      persist(next, remember);
-      return next;
+  async function signup(name: string, email: string, password: string) {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: name } },
     });
+    if (error) throw error;
+    return Boolean(data.session);
   }
 
+  async function resetPassword(email: string) {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    });
+    if (error) throw error;
+  }
+
+  async function logout() {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+  }
+
+  function subscribe(_tier: string) {
+    console.warn('Subscription changes must be completed through the verified billing flow.');
+  }
+
+  const session = authSession ? mapSession(authSession) : null;
   const user = session?.user ?? null;
   const role = session?.role ?? null;
-  const isTrialExpired = !!session && !session.is_subscribed && new Date() > new Date(session.trial_expired_date);
+  const isTrialExpired = Boolean(
+    session && !session.is_subscribed && new Date() > new Date(session.trial_expired_date)
+  );
+
+  if (loading) {
+    return <div className="min-h-screen" aria-label="Restoring secure session" />;
+  }
 
   return (
-    <AuthContext.Provider value={{ user, session, role, isTrialExpired, login, logout, subscribe }}>
+    <AuthContext.Provider value={{ user, session, role, isTrialExpired, login, signup, resetPassword, logout, subscribe }}>
       {children}
     </AuthContext.Provider>
   );
